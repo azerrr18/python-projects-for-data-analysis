@@ -1,4 +1,8 @@
 #Experimental projets
-Analyzing diferent datasets via python
+
+Analyzing different datasets via python
+
+
 ##Tools
-Jupyter Notebooks
+
+-Jupyter Notebooks
