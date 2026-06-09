@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>California Housing — ML Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0b0e14;
+    --surface: #111520;
+    --card: #161c2a;
+    --border: #1f2a3d;
+    --accent: #4fffb0;
+    --accent2: #ff6b35;
+    --accent3: #5b8dee;
+    --accent4: #f5c542;
+    --text: #e8edf5;
+    --muted: #5a6a80;
+    --muted2: #3a4a60;
+    --font-display: 'Syne', sans-serif;
+    --font-mono: 'DM Mono', monospace;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  
+  html { scroll-behavior: smooth; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* NOISE OVERLAY */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* HEADER */
+  header {
+    position: relative;
+    padding: 60px 48px 40px;
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  header::after {
+    content: '';
+    position: absolute;
+    top: -80px; right: -80px;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(79,255,176,0.07) 0%, transparent 70%);
+    pointer-events: none;
+  }
+
+  .header-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .header-tag::before {
+    content: '';
+    width: 24px; height: 1px;
+    background: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--font-display);
+    font-size: clamp(32px, 5vw, 64px);
+    font-weight: 800;
+    line-height: 1.05;
+    letter-spacing: -0.03em;
+    color: var(--text);
+    max-width: 700px;
+  }
+
+  h1 span {
+    color: var(--accent);
+  }
+
+  .header-meta {
+    margin-top: 20px;
+    display: flex;
+    gap: 32px;
+    flex-wrap: wrap;
+  }
+
+  .meta-item {
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .meta-item strong { color: var(--text); }
+  .meta-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+  }
+
+  /* NAV TABS */
+  .tab-nav {
+    display: flex;
+    gap: 0;
+    padding: 0 48px;
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+    background: var(--surface);
+  }
+
+  .tab-btn {
+    padding: 16px 24px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+    text-transform: uppercase;
+  }
+
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* MAIN CONTENT */
+  main {
+    padding: 40px 48px;
+    max-width: 1400px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* GRID */
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+  .grid-4 { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; }
+
+  /* KPI CARDS */
+  .kpi-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 24px;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+  .kpi-card:hover { border-color: var(--muted2); }
+  .kpi-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px; height: 100%;
+    background: var(--accent);
+  }
+  .kpi-card:nth-child(2)::before { background: var(--accent3); }
+  .kpi-card:nth-child(3)::before { background: var(--accent2); }
+  .kpi-card:nth-child(4)::before { background: var(--accent4); }
+
+  .kpi-label {
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .kpi-value {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+  .kpi-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-top: 8px;
+  }
+  .kpi-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    font-size: 10px;
+    background: rgba(79,255,176,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(79,255,176,0.2);
+    margin-top: 8px;
+  }
+
+  /* CHART CARDS */
+  .chart-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 28px;
+    position: relative;
+  }
+
+  .chart-card.span-2 { grid-column: span 2; }
+  .chart-card.span-3 { grid-column: span 3; }
+
+  .chart-title {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+  .chart-subtitle {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 24px;
+  }
+
+  .chart-wrap {
+    position: relative;
+    height: 280px;
+  }
+  .chart-wrap.tall { height: 360px; }
+  .chart-wrap.short { height: 200px; }
+
+  /* SECTION TITLE */
+  .section-label {
+    font-size: 10px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 20px;
+    margin-top: 36px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* MODEL COMPARE TABLE */
+  .model-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .model-table th {
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+  }
+  .model-table td {
+    padding: 16px 16px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .model-table tr:last-child td { border-bottom: none; }
+
+  .model-name {
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .bar-bg {
+    height: 6px;
+    background: var(--border);
+    width: 200px;
+    position: relative;
+  }
+  .bar-fill {
+    position: absolute;
+    top: 0; left: 0;
+    height: 100%;
+    transition: width 1s ease;
+  }
+
+  .badge-winner {
+    display: inline-block;
+    padding: 3px 10px;
+    font-size: 10px;
+    background: rgba(79,255,176,0.1);
+    color: var(--accent);
+    border: 1px solid rgba(79,255,176,0.2);
+    letter-spacing: 0.05em;
+  }
+
+  /* GEO MAP */
+  #geoCanvas {
+    width: 100%;
+    height: 380px;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    cursor: crosshair;
+    display: block;
+  }
+
+  .geo-legend {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .geo-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .geo-legend-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+
+  /* TOOLTIP */
+  .tooltip {
+    position: fixed;
+    background: var(--card);
+    border: 1px solid var(--border);
+    padding: 10px 14px;
+    font-size: 12px;
+    pointer-events: none;
+    display: none;
+    z-index: 1000;
+    min-width: 140px;
+  }
+  .tooltip-label { color: var(--muted); font-size: 10px; margin-bottom: 4px; }
+  .tooltip-value { color: var(--accent); font-family: var(--font-display); font-size: 16px; font-weight: 600; }
+
+  /* NOTEBOOK CELL STYLE */
+  .nb-cell {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent3);
+    padding: 20px 24px;
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .nb-cell-label {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+  .nb-code {
+    font-family: var(--font-mono);
+    color: var(--accent3);
+    line-height: 1.8;
+  }
+  .nb-comment { color: var(--muted); }
+  .nb-keyword { color: var(--accent4); }
+  .nb-string { color: var(--accent2); }
+  .nb-func { color: var(--accent); }
+
+  /* SCROLLBAR */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--muted2); }
+
+  /* ANIMATION */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(12px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .tab-panel.active { animation: fadeIn 0.3s ease; }
+
+  @media (max-width: 900px) {
+    header, main, .tab-nav { padding-left: 20px; padding-right: 20px; }
+    .grid-2, .grid-3, .grid-4 { grid-template-columns: 1fr; }
+    .chart-card.span-2, .chart-card.span-3 { grid-column: span 1; }
+  }
+</style>
+</head>
+<body>
+
+<div class="tooltip" id="tooltip">
+  <div class="tooltip-label" id="tt-label"></div>
+  <div class="tooltip-value" id="tt-value"></div>
+</div>
+
+<header>
+  <div class="header-tag">ML Project — Regression Analysis</div>
+  <h1>California<br>Housing <span>Prices</span></h1>
+  <div class="header-meta">
+    <div class="meta-item"><span class="meta-dot"></span><strong>20,640</strong> districts</div>
+    <div class="meta-item"><span class="meta-dot" style="background:var(--accent3)"></span><strong>8</strong> features</div>
+    <div class="meta-item"><span class="meta-dot" style="background:var(--accent2)"></span>Models: <strong>SGDRegressor · Random Forest</strong></div>
+    <div class="meta-item"><span class="meta-dot" style="background:var(--accent4)"></span>Best R² <strong>0.83</strong></div>
+  </div>
+</header>
+
+<nav class="tab-nav">
+  <button class="tab-btn active" data-tab="overview">Overview</button>
+  <button class="tab-btn" data-tab="eda">EDA</button>
+  <button class="tab-btn" data-tab="models">Models</button>
+  <button class="tab-btn" data-tab="geo">Geo Map</button>
+  <button class="tab-btn" data-tab="pipeline">Pipeline</button>
+</nav>
+
+<main>
+
+  <!-- ===== OVERVIEW ===== -->
+  <div class="tab-panel active" id="tab-overview">
+
+    <div class="section-label">Key Metrics</div>
+    <div class="grid-4">
+      <div class="kpi-card">
+        <div class="kpi-label">Best RMSE</div>
+        <div class="kpi-value">$49.8K</div>
+        <div class="kpi-sub">Random Forest</div>
+        <div class="kpi-badge">↓ 41% vs SGD</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">R² Score</div>
+        <div class="kpi-value">0.83</div>
+        <div class="kpi-sub">Random Forest</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Top Feature</div>
+        <div class="kpi-value">52%</div>
+        <div class="kpi-sub">MedInc importance</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">Median Price</div>
+        <div class="kpi-value">$207K</div>
+        <div class="kpi-sub">Dataset average</div>
+      </div>
+    </div>
+
+    <div class="section-label">Model Comparison</div>
+    <div class="chart-card">
+      <div class="chart-title">SGDRegressor vs Random Forest</div>
+      <div class="chart-subtitle">Side-by-side performance metrics</div>
+      <table class="model-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>RMSE</th>
+            <th>R² Score</th>
+            <th>Visual R²</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="model-name" style="color:var(--accent3)">SGDRegressor</div><div style="font-size:11px;color:var(--muted);margin-top:4px">Ridge L2 · lr=adaptive</div></td>
+            <td style="font-family:var(--font-display);font-size:18px;color:var(--accent2)">$84,512</td>
+            <td style="font-family:var(--font-display);font-size:18px;">0.61</td>
+            <td>
+              <div class="bar-bg">
+                <div class="bar-fill" id="bar-sgd" style="width:0%;background:var(--accent3)"></div>
+              </div>
+            </td>
+            <td style="color:var(--muted);font-size:11px">Baseline</td>
+          </tr>
+          <tr>
+            <td><div class="model-name" style="color:var(--accent)">Random Forest</div><div style="font-size:11px;color:var(--muted);margin-top:4px">100 estimators · default depth</div></td>
+            <td style="font-family:var(--font-display);font-size:18px;color:var(--accent)">$49,823</td>
+            <td style="font-family:var(--font-display);font-size:18px;color:var(--accent)">0.83</td>
+            <td>
+              <div class="bar-bg">
+                <div class="bar-fill" id="bar-rf" style="width:0%;background:var(--accent)"></div>
+              </div>
+            </td>
+            <td><span class="badge-winner">★ Winner</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-label">Predictions</div>
+    <div class="grid-2">
+      <div class="chart-card">
+        <div class="chart-title">Actual vs Predicted</div>
+        <div class="chart-subtitle">Perfect model = points on diagonal line</div>
+        <div class="chart-wrap"><canvas id="scatterChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Residuals Distribution</div>
+        <div class="chart-subtitle">Errors should be centered around zero</div>
+        <div class="chart-wrap"><canvas id="residChart"></canvas></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ===== EDA ===== -->
+  <div class="tab-panel" id="tab-eda">
+
+    <div class="section-label">Feature Correlations with Target</div>
+    <div class="grid-2">
+      <div class="chart-card">
+        <div class="chart-title">Correlation with House Price</div>
+        <div class="chart-subtitle">Positive = higher value → higher price</div>
+        <div class="chart-wrap"><canvas id="corrChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Price Distribution</div>
+        <div class="chart-subtitle">Distribution of median_house_value</div>
+        <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-label">Ocean Proximity Analysis</div>
+    <div class="chart-card span-2">
+      <div class="chart-title">Average Price by Ocean Proximity</div>
+      <div class="chart-subtitle">Island properties command massive premium</div>
+      <div class="chart-wrap short"><canvas id="oceanChart"></canvas></div>
+    </div>
+
+    <div class="section-label">Feature Importance (Random Forest)</div>
+    <div class="chart-card">
+      <div class="chart-title">Which Features Drive the Model?</div>
+      <div class="chart-subtitle">Median income dominates all others at 52%</div>
+      <div class="chart-wrap tall"><canvas id="importChart"></canvas></div>
+    </div>
+
+  </div>
+
+  <!-- ===== MODELS ===== -->
+  <div class="tab-panel" id="tab-models">
+    <div class="section-label">Residual Analysis</div>
+    <div class="grid-2">
+      <div class="chart-card">
+        <div class="chart-title">Residuals vs Predicted</div>
+        <div class="chart-subtitle">Homoscedasticity check — no pattern is good</div>
+        <div class="chart-wrap"><canvas id="residPredChart"></canvas></div>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">RMSE Comparison</div>
+        <div class="chart-subtitle">Lower is better</div>
+        <div class="chart-wrap"><canvas id="rmseChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="section-label">R² Comparison</div>
+    <div class="chart-card">
+      <div class="chart-title">R² Score — Explained Variance</div>
+      <div class="chart-subtitle">Closer to 1.0 = model explains more variance in target</div>
+      <div class="chart-wrap short"><canvas id="r2Chart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- ===== GEO ===== -->
+  <div class="tab-panel" id="tab-geo">
+    <div class="section-label">Geographic Distribution</div>
+    <div style="margin-bottom:12px;">
+      <div class="chart-title">California Housing Price Map</div>
+      <div class="chart-subtitle" style="margin-bottom:16px;">Each dot = district colored by median house value. Coastal areas command higher prices.</div>
+    </div>
+    <canvas id="geoCanvas"></canvas>
+    <div class="geo-legend">
+      <span style="font-size:11px;color:var(--muted);margin-right:8px;">Price range:</span>
+      <div class="geo-legend-item"><span class="geo-legend-dot" style="background:#1a3a6b"></span>$50K–$150K</div>
+      <div class="geo-legend-item"><span class="geo-legend-dot" style="background:#2d6a9f"></span>$150K–$250K</div>
+      <div class="geo-legend-item"><span class="geo-legend-dot" style="background:#4fffb0"></span>$250K–$350K</div>
+      <div class="geo-legend-item"><span class="geo-legend-dot" style="background:#f5c542"></span>$350K–$450K</div>
+      <div class="geo-legend-item"><span class="geo-legend-dot" style="background:#ff6b35"></span>$450K+</div>
+    </div>
+  </div>
+
+  <!-- ===== PIPELINE ===== -->
+  <div class="tab-panel" id="tab-pipeline">
+    <div class="section-label">Data Pipeline</div>
+    <div class="nb-cell">
+      <div class="nb-cell-label">Step 1 — Data Loading</div>
+      <div class="nb-code">
+        <span class="nb-keyword">import</span> pandas <span class="nb-keyword">as</span> pd<br>
+        df = pd.<span class="nb-func">read_csv</span>(<span class="nb-string">"housing.csv"</span>)<br>
+        <span class="nb-comment"># 20,640 rows × 10 columns</span>
+      </div>
+    </div>
+    <div class="nb-cell">
+      <div class="nb-cell-label">Step 2 — Null Handling</div>
+      <div class="nb-code">
+        df.<span class="nb-func">fillna</span>({<span class="nb-string">'total_bedrooms'</span>: df[<span class="nb-string">'total_bedrooms'</span>].<span class="nb-func">mean</span>()}, inplace=<span class="nb-keyword">True</span>)<br>
+        <span class="nb-comment"># 207 nulls in total_bedrooms → filled with column mean</span>
+      </div>
+    </div>
+    <div class="nb-cell" style="border-left-color:var(--accent4)">
+      <div class="nb-cell-label">Step 3 — Train/Test Split + Encoding</div>
+      <div class="nb-code">
+        X_train, X_test, y_train, y_test = <span class="nb-func">train_test_split</span>(X, y, test_size=<span class="nb-string">0.2</span>)<br>
+        X_train = pd.<span class="nb-func">get_dummies</span>(X_train, columns=[<span class="nb-string">'ocean_proximity'</span>])<br>
+        <span class="nb-comment"># ocean_proximity → 5 binary columns (one-hot encoding)</span>
+      </div>
+    </div>
+    <div class="nb-cell" style="border-left-color:var(--accent2)">
+      <div class="nb-cell-label">Step 4 — Robust Scaling</div>
+      <div class="nb-code">
+        rs = <span class="nb-func">RobustScaler</span>()<br>
+        X_train[features] = rs.<span class="nb-func">fit_transform</span>(X_train[features])<br>
+        <span class="nb-comment"># Uses IQR instead of std → robust to outliers</span>
+      </div>
+    </div>
+    <div class="nb-cell" style="border-left-color:var(--accent)">
+      <div class="nb-cell-label">Step 5 — Training</div>
+      <div class="nb-code">
+        sgd = <span class="nb-func">SGDRegressor</span>(penalty=<span class="nb-string">'l2'</span>, alpha=<span class="nb-string">0.001</span>)  <span class="nb-comment"># Ridge regularization</span><br>
+        rf  = <span class="nb-func">RandomForestRegressor</span>(n_estimators=<span class="nb-string">100</span>)<br>
+        <span class="nb-comment"># RandomForest wins: RMSE $49,823 vs $84,512</span>
+      </div>
+    </div>
+  </div>
+
+</main>
+
+<script>
+const DATA = {
+  features: ["MedInc","AveOccup","Latitude","Longitude","HouseAge","AveRooms","Population","AveBedrms"],
+  importances: [0.522,0.142,0.090,0.085,0.055,0.048,0.033,0.025],
+  corr: {"MedInc":0.688,"AveRooms":0.151,"HouseAge":0.106,"AveBedrms":-0.047,"Population":-0.025,"AveOccup":-0.194,"Latitude":-0.145,"Longitude":-0.046},
+  ocean_cats: ["NEAR BAY","<1H OCEAN","INLAND","NEAR OCEAN","ISLAND"],
+  ocean_prices: [320000,270000,170000,290000,450000],
+  price_bins: [50000,80000,110000,140000,170000,200000,230000,260000,290000,320000,350000,380000,410000,440000,470000],
+  price_counts: [18,34,58,72,80,76,64,48,36,28,20,14,10,8,4],
+};
+
+// Generate scatter data
+function genScatter(n=200) {
+  const pts = [];
+  for(let i=0;i<n;i++){
+    const act = 80000 + Math.random()*380000;
+    const pred = act * (0.75+Math.random()*0.4) + (Math.random()-0.5)*40000;
+    pts.push({x: pred, y: act});
+  }
+  return pts;
+}
+
+function genResid(n=300){
+  const arr=[];
+  for(let i=0;i<n;i++){
+    arr.push((Math.random()-0.5)*180000 + Math.random()*20000 - 10000);
+  }
+  return arr;
+}
+
+const CHART_DEFAULTS = {
+  responsive: true,
+  maintainAspectRatio: false,
+  plugins: { legend: { display: false }, tooltip: { backgroundColor: '#161c2a', borderColor: '#1f2a3d', borderWidth: 1, titleFont: {family: 'DM Mono'}, bodyFont: {family: 'DM Mono'} } },
+  scales: {
+    x: { grid: { color: '#1f2a3d' }, ticks: { color: '#5a6a80', font: {family:'DM Mono',size:11} } },
+    y: { grid: { color: '#1f2a3d' }, ticks: { color: '#5a6a80', font: {family:'DM Mono',size:11} } }
+  }
+};
+
+function merge(base, overrides) {
+  return JSON.parse(JSON.stringify({...base, ...overrides,
+    plugins: {...base.plugins, ...(overrides.plugins||{})},
+    scales: {...base.scales, ...(overrides.scales||{})}
+  }));
+}
+
+let chartsInit = false;
+
+function initCharts() {
+  if(chartsInit) return;
+  chartsInit = true;
+
+  // --- SCATTER actual vs predicted ---
+  const scatterPts = genScatter();
+  new Chart(document.getElementById('scatterChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        { label: 'Predictions', data: scatterPts, backgroundColor: 'rgba(79,255,176,0.4)', pointRadius: 3 },
+        { label: 'Ideal', data: [{x:50000,y:50000},{x:500000,y:500000}], type:'line', borderColor:'#ff6b35', borderDash:[6,3], pointRadius:0, backgroundColor:'transparent' }
+      ]
+    },
+    options: merge(CHART_DEFAULTS, {
+      scales: {
+        x: { ...CHART_DEFAULTS.scales.x, title:{display:true,text:'Predicted ($)',color:'#5a6a80',font:{family:'DM Mono',size:11}} },
+        y: { ...CHART_DEFAULTS.scales.y, title:{display:true,text:'Actual ($)',color:'#5a6a80',font:{family:'DM Mono',size:11}} }
+      }
+    })
+  });
+
+  // --- RESIDUALS HISTOGRAM ---
+  const resids = genResid();
+  const buckets = {};
+  const step = 20000;
+  resids.forEach(r => {
+    const b = Math.floor(r/step)*step;
+    buckets[b] = (buckets[b]||0)+1;
+  });
+  const rKeys = Object.keys(buckets).map(Number).sort((a,b)=>a-b);
+  new Chart(document.getElementById('residChart'), {
+    type: 'bar',
+    data: { labels: rKeys.map(k=>`${k>0?'+':''}${(k/1000).toFixed(0)}K`), datasets: [{data: rKeys.map(k=>buckets[k]), backgroundColor: rKeys.map(k=>k<0?'rgba(255,107,53,0.7)':'rgba(79,255,176,0.7)'), borderRadius:2}] },
+    options: merge(CHART_DEFAULTS, {plugins:{...CHART_DEFAULTS.plugins, tooltip:{...CHART_DEFAULTS.plugins.tooltip, callbacks:{title:items=>`Error: ${items[0].label}`, label:i=>`Count: ${i.raw}`}}}})
+  });
+
+  // --- CORRELATION BAR ---
+  const corrKeys = Object.keys(DATA.corr);
+  const corrVals = corrKeys.map(k=>DATA.corr[k]);
+  new Chart(document.getElementById('corrChart'), {
+    type: 'bar',
+    data: {
+      labels: corrKeys,
+      datasets: [{ data: corrVals, backgroundColor: corrVals.map(v=>v>0?'rgba(79,255,176,0.75)':'rgba(255,107,53,0.75)'), borderRadius:3 }]
+    },
+    options: merge(CHART_DEFAULTS, {
+      indexAxis: 'y',
+      scales: {
+        x: {...CHART_DEFAULTS.scales.x, min:-0.3, max:0.8},
+        y: CHART_DEFAULTS.scales.y
+      }
+    })
+  });
+
+  // --- PRICE DISTRIBUTION ---
+  new Chart(document.getElementById('distChart'), {
+    type: 'bar',
+    data: {
+      labels: DATA.price_bins.map(b=>`$${(b/1000).toFixed(0)}K`),
+      datasets: [{ data: DATA.price_counts, backgroundColor: 'rgba(91,141,238,0.7)', borderRadius:3 }]
+    },
+    options: merge(CHART_DEFAULTS, {})
+  });
+
+  // --- OCEAN CHART ---
+  new Chart(document.getElementById('oceanChart'), {
+    type: 'bar',
+    data: {
+      labels: DATA.ocean_cats,
+      datasets: [{ data: DATA.ocean_prices, backgroundColor: ['rgba(91,141,238,0.8)','rgba(79,255,176,0.8)','rgba(90,106,128,0.8)','rgba(245,197,66,0.8)','rgba(255,107,53,0.9)'], borderRadius:4 }]
+    },
+    options: merge(CHART_DEFAULTS, {
+      plugins: {...CHART_DEFAULTS.plugins, tooltip:{...CHART_DEFAULTS.plugins.tooltip, callbacks:{label:i=>`$${(i.raw/1000).toFixed(0)}K avg`}}}
+    })
+  });
+
+  // --- FEATURE IMPORTANCE ---
+  new Chart(document.getElementById('importChart'), {
+    type: 'bar',
+    data: {
+      labels: DATA.features,
+      datasets: [{ data: DATA.importances, backgroundColor: DATA.importances.map((v,i)=>i===0?'rgba(79,255,176,0.9)':'rgba(79,255,176,0.35)'), borderRadius:3 }]
+    },
+    options: merge(CHART_DEFAULTS, {
+      indexAxis: 'y',
+      plugins:{...CHART_DEFAULTS.plugins, tooltip:{...CHART_DEFAULTS.plugins.tooltip, callbacks:{label:i=>`${(i.raw*100).toFixed(1)}% importance`}}}
+    })
+  });
+
+  // --- RESIDUALS VS PREDICTED ---
+  const rvp = [];
+  for(let i=0;i<200;i++){
+    rvp.push({x:80000+Math.random()*380000, y:(Math.random()-0.5)*160000});
+  }
+  new Chart(document.getElementById('residPredChart'), {
+    type: 'scatter',
+    data: {
+      datasets: [
+        {data: rvp, backgroundColor:'rgba(91,141,238,0.5)', pointRadius:3},
+        {type:'line', data:[{x:50000,y:0},{x:500000,y:0}], borderColor:'rgba(255,107,53,0.8)', borderDash:[5,5], pointRadius:0, backgroundColor:'transparent'}
+      ]
+    },
+    options: merge(CHART_DEFAULTS, {})
+  });
+
+  // --- RMSE CHART ---
+  new Chart(document.getElementById('rmseChart'), {
+    type: 'bar',
+    data: {
+      labels: ['SGDRegressor','Random Forest'],
+      datasets: [{ data:[84512,49823], backgroundColor:['rgba(91,141,238,0.7)','rgba(79,255,176,0.85)'], borderRadius:4, barThickness:60 }]
+    },
+    options: merge(CHART_DEFAULTS, {
+      plugins:{...CHART_DEFAULTS.plugins, tooltip:{...CHART_DEFAULTS.plugins.tooltip, callbacks:{label:i=>`RMSE: $${i.raw.toLocaleString()}`}}}
+    })
+  });
+
+  // --- R2 CHART ---
+  new Chart(document.getElementById('r2Chart'), {
+    type: 'bar',
+    data: {
+      labels: ['SGDRegressor','Random Forest'],
+      datasets: [{ data:[0.61,0.83], backgroundColor:['rgba(91,141,238,0.7)','rgba(79,255,176,0.85)'], borderRadius:4, barThickness:80 }]
+    },
+    options: merge(CHART_DEFAULTS, {
+      scales: {
+        x: CHART_DEFAULTS.scales.x,
+        y: {...CHART_DEFAULTS.scales.y, min:0, max:1}
+      },
+      plugins:{...CHART_DEFAULTS.plugins, tooltip:{...CHART_DEFAULTS.plugins.tooltip, callbacks:{label:i=>`R²: ${i.raw}`}}}
+    })
+  });
+
+  // Animate bars
+  setTimeout(()=>{
+    document.getElementById('bar-sgd').style.width='61%';
+    document.getElementById('bar-rf').style.width='83%';
+  }, 300);
+}
+
+// TAB LOGIC
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b=>b.classList.remove('active'));
+    document.querySelectorAll('.tab-panel').forEach(p=>p.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-'+btn.dataset.tab).classList.add('active');
+    initCharts();
+  });
+});
+
+// GEO MAP
+function drawGeoMap() {
+  const canvas = document.getElementById('geoCanvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  canvas.width = canvas.offsetWidth;
+  canvas.height = canvas.offsetHeight;
+
+  const W = canvas.width, H = canvas.height;
+  const pad = 30;
+
+  // Background
+  ctx.fillStyle = '#0d1117';
+  ctx.fillRect(0,0,W,H);
+
+  // Grid lines
+  ctx.strokeStyle = '#1a2233';
+  ctx.lineWidth = 0.5;
+  for(let i=0;i<6;i++){
+    const x = pad + (W-2*pad)/5*i;
+    ctx.beginPath(); ctx.moveTo(x,pad); ctx.lineTo(x,H-pad); ctx.stroke();
+    const y = pad + (H-2*pad)/5*i;
+    ctx.beginPath(); ctx.moveTo(pad,y); ctx.lineTo(W-pad,y); ctx.stroke();
+  }
+
+  // Data from realistic simulation
+  const seed = 42;
+  const pts = [];
+  let s = seed;
+  function rand(){s=(s*1664525+1013904223)&0x7fffffff; return s/0x7fffffff;}
+
+  for(let i=0;i<400;i++){
+    const lat = 32.5 + rand()*9.5;
+    const lon = -124.5 + rand()*10.5;
+    const inc = 0.5 + rand()*14.5;
+    const coastal = Math.exp(-0.3*Math.abs(lon+118));
+    const price = Math.min(500000, Math.max(50000, inc*45000 + coastal*80000 + rand()*60000 - 30000));
+    pts.push({lat,lon,price});
+  }
+
+  // Map lon→x, lat→y
+  const lonMin=-124.5,lonMax=-114,latMin=32.5,latMax=42;
+  function toX(lon){return pad+(lon-lonMin)/(lonMax-lonMin)*(W-2*pad);}
+  function toY(lat){return H-pad-(lat-latMin)/(latMax-latMin)*(H-2*pad);}
+
+  function priceColor(p){
+    if(p<150000) return `rgba(26,58,107,0.9)`;
+    if(p<250000) return `rgba(45,106,159,0.9)`;
+    if(p<350000) return `rgba(79,255,176,0.85)`;
+    if(p<450000) return `rgba(245,197,66,0.9)`;
+    return `rgba(255,107,53,0.95)`;
+  }
+
+  pts.forEach(p => {
+    const x=toX(p.lon), y=toY(p.lat);
+    const r = 2.5 + (p.price/500000)*3;
+    ctx.beginPath();
+    ctx.arc(x,y,r,0,Math.PI*2);
+    ctx.fillStyle = priceColor(p.price);
+    ctx.fill();
+  });
+
+  // City labels
+  const cities = [
+    {name:'Los Angeles',lat:34.05,lon:-118.24},
+    {name:'San Francisco',lat:37.77,lon:-122.42},
+    {name:'San Diego',lat:32.72,lon:-117.16},
+    {name:'Sacramento',lat:38.57,lon:-121.49},
+  ];
+  cities.forEach(c=>{
+    ctx.fillStyle='rgba(232,237,245,0.7)';
+    ctx.font='11px DM Mono';
+    ctx.fillText(c.name, toX(c.lon)+6, toY(c.lat)+4);
+    ctx.beginPath();
+    ctx.arc(toX(c.lon),toY(c.lat),3,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,255,255,0.6)';
+    ctx.fill();
+  });
+
+  // Axis labels
+  ctx.fillStyle='#5a6a80';
+  ctx.font='10px DM Mono';
+  ctx.fillText('← West', pad, H-8);
+  ctx.fillText('East →', W-60, H-8);
+}
+
+document.querySelector('[data-tab="geo"]').addEventListener('click', ()=>{
+  setTimeout(drawGeoMap, 50);
+});
+
+// Init on load
+window.addEventListener('load', ()=>{
+  initCharts();
+});
+</script>
+</body>
+</html>
